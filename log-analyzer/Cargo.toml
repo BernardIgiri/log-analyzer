@@ -1,0 +1,24 @@
+[package]
+name = "log-analyzer"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88.0"
+
+[dependencies]
+axum = "0.8.4"
+chrono = { version = "0.4.41", features = ["alloc", "std", "clock", "now", "serde"], default-features = false }
+clap = { version = "4.5.41", features = ["derive"] }
+derive_more = { version = "2.0.1", features = ["full"] }
+lru = "0.16.0"
+num-format = "0.4.4"
+parking_lot = "0.12.4"
+prometheus = "0.14.0"
+regex = "1.11.1"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+tokio = { version = "1.46.1", features = ["full"] }
+tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }
+
+[dev-dependencies]
+asserting = "0.9.0"
+reqwest = "0.12.22"

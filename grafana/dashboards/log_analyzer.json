@@ -1,0 +1,15 @@
+{
+  "title": "Log Analyzer Dashboard",
+  "uid": "log-analyzer",
+  "version": 1,
+  "schemaVersion": 36,
+  "panels": [],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "30s"
+}

@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  noise-maker:
+    build:
+      context: .
+      dockerfile: Dockerfile.noise-maker
+    volumes:
+      - logs:/logs:rw
+    entrypoint: ["/usr/local/bin/noise-maker", "--folder", "/logs"]
+    
+  log-analyzer:
+    build:
+      context: .
+      dockerfile: Dockerfile.log-analyzer
+    volumes:
+      - logs:/logs:ro
+    ports:
+      - "8080:8080"
+    entrypoint: ["/usr/local/bin/log-analyzer", "--folder", "/logs"]
+
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    depends_on:
+      - log-analyzer
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/dashboards:/etc/grafana/dashboards
+    depends_on:
+      - prometheus
+
+volumes:
+  grafana-storage:
+  logs:

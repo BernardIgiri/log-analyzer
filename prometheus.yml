@@ -1,0 +1,8 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: 'log-analyzer'
+    static_configs:
+      - targets: ['log-analyzer:8080']
+

@@ -1,0 +1,9 @@
+[workspace]
+resolver = "3"
+members = [
+    "log-analyzer",
+    "noise-maker",
+]
+
+[profile.release]
+panic = "abort"
