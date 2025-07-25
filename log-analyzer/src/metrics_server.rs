@@ -12,7 +12,7 @@ use axum::{
     routing::get,
 };
 use prometheus::TextEncoder;
-use tokio::{net::TcpListener, task::JoinHandle};
+use tokio::{net::TcpListener, signal, task::JoinHandle};
 
 use crate::{analytics::Analytics, prometheus::PromMetrics};
 
@@ -25,6 +25,7 @@ pub fn start(analytics: Arc<Analytics>) -> JoinHandle<()> {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 8080);
         let listener = TcpListener::bind(addr).await.unwrap();
         axum::serve(listener, router(Metrics(analytics, pro_metrics)))
+            .with_graceful_shutdown(shutdown_signal())
             .await
             .unwrap();
     })
@@ -52,4 +53,28 @@ async fn handler(State(Metrics(analytics, pro_metrics)): State<Metrics>) -> Resp
 }
 async fn up() -> Response<Body> {
     ().into_response()
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
 }

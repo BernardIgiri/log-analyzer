@@ -4,7 +4,7 @@ A Rust-based learning project exploring concurrency, file IO, metrics aggregatio
 
 - `log-analyzer`: A multi-threaded log processor with Prometheus metrics output.
 - `noise-maker`: A synthetic log generator for testing the system under load.
-- Dockerized setup with Prometheus and Grafana dashboards.
+- Containerized setup with Prometheus and Grafana dashboards.
 
 ---
 
@@ -43,7 +43,7 @@ This project was built to explore:
 - Rust ≥ 1.88
   - Rust toolchain target `x86_64-unknown-linux-musl`
 
-- Docker and Docker Compose
+- Podman and Podman-Compose
 - Just
 
 ### Build all workspace binaries
@@ -52,7 +52,7 @@ This project was built to explore:
 just build
 ```
 
-### Run locally with Docker Compose
+### Run locally with Podman
 
 ```bash
 just start
