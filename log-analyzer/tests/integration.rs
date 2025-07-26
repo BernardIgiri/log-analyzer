@@ -1,6 +1,3 @@
-use async_nats;
-use portpicker;
-use reqwest;
 use std::time::Duration;
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::nats;
@@ -8,7 +5,7 @@ use tokio::{process::Command, time::sleep};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn log_analyzer_starts_and_consumes() {
-    // ✅ Start NATS container
+    // Start NATS container
     let nats_container = nats::Nats::default()
         .start()
         .await
