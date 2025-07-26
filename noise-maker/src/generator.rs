@@ -18,9 +18,22 @@ const STATUS: [(u16, u8); 6] = [
     (404, 50),
     (500, 5),
 ];
+const SERVICE: [(&str, u8); 4] = [("auth", 1), ("api", 5), ("frontend", 10), ("db", 10)];
+const LEVEL: [(&str, u8); 3] = [("INFO", 30), ("WARN", 5), ("ERROR", 1)];
+const MESSAGE: [(&str, u8); 5] = [
+    ("User logged in", 5),
+    ("DB query executed", 50),
+    ("Cache miss", 10),
+    ("Permission denied", 10),
+    ("Token refreshed", 8),
+];
 
-pub fn generate_apache_log<R: Rng + ?Sized>(id: usize, rng: &mut R) -> String {
-    let ip = format!("192.168.{}.{}", id % 256, rng.random_range(0..256));
+pub fn generate_apache_log<R: Rng + ?Sized>(rng: &mut R) -> String {
+    let ip = format!(
+        "192.168.{}.{}",
+        rng.random_range(0..256),
+        rng.random_range(0..256)
+    );
     let timestamp = Local::now().format("%d/%b/%Y:%H:%M:%S %z");
     let method = METHODS.choose_weighted(rng, |(_, w)| *w).unwrap().0;
     let path = PATHS.choose_weighted(rng, |(_, w)| *w).unwrap().0;
@@ -30,17 +43,11 @@ pub fn generate_apache_log<R: Rng + ?Sized>(id: usize, rng: &mut R) -> String {
     format!("{ip} - - [{timestamp}] \"{method} {path} HTTP/1.1\" {status} {size}")
 }
 
-pub fn generate_json_log<R: Rng + ?Sized>(id: usize, rng: &mut R) -> String {
+pub fn generate_json_log<R: Rng + ?Sized>(rng: &mut R) -> String {
     let ts = Local::now().to_rfc3339();
-    let service = ["auth", "api", "frontend", "db"][id % 4];
-    let level = ["INFO", "WARN", "ERROR"][rng.random_range(0..3)];
-    let msg = [
-        "User logged in",
-        "DB query executed",
-        "Cache miss",
-        "Permission denied",
-        "Token refreshed",
-    ][rng.random_range(0..5)];
+    let service = SERVICE.choose_weighted(rng, |(_, w)| *w).unwrap().0;
+    let level = LEVEL.choose_weighted(rng, |(_, w)| *w).unwrap().0;
+    let msg = MESSAGE.choose_weighted(rng, |(_, w)| *w).unwrap().0;
 
     format!("{{\"ts\":\"{ts}\",\"service\":\"{service}\",\"level\":\"{level}\",\"msg\":\"{msg}\"}}")
 }

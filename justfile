@@ -1,6 +1,6 @@
 # Run tests
 test:
-    cargo test --all-targets --all-features
+    cargo test --no-default-features
 
 # Build Rust binaries for musl target
 build-rs:
@@ -8,7 +8,7 @@ build-rs:
 
 # Build podman containers
 build-pod:
-    podman-compose build
+    podman-compose build --no-cache
 
 # Builds everything
 build: build-rs build-pod

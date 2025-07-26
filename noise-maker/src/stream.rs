@@ -1,39 +1,33 @@
-use std::path::PathBuf;
-
 use crate::args::LogFormat;
 use crate::generator::{generate_apache_log, generate_json_log};
+use async_nats::Client;
 use rand::{SeedableRng, rngs::StdRng};
-use tokio::{
-    fs::OpenOptions,
-    io::AsyncWriteExt,
-    time::{Duration, interval},
-};
+use tokio::time::{Duration, sleep};
+use tryhard::{RetryFutureConfig, retry_fn};
 
-pub async fn run_log_stream(root: PathBuf, id: usize, rate: u64, format: LogFormat) {
+pub async fn run_log_stream(
+    rate: u64,
+    format: LogFormat,
+    nats_url: &str,
+    subject: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let config = RetryFutureConfig::new(10)
+        .exponential_backoff(Duration::from_millis(100))
+        .max_delay(Duration::from_secs(5));
+    let client: Client = retry_fn(|| async {
+        println!("Attempting to connect to NATS at {nats_url}");
+        async_nats::connect(nats_url).await
+    })
+    .with_config(config)
+    .await?;
     let mut rng = StdRng::from_os_rng();
-    let mut ticker = interval(Duration::from_millis(1000 / rate.max(1)));
-
-    let mut filepath = root.clone();
-    filepath.push(format!("log-{id}.log"));
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(filepath)
-        .await
-        .expect("Failed to open log file");
-
+    let delay = Duration::from_millis(1000 / rate.max(1));
     loop {
-        ticker.tick().await;
         let log = match format {
-            LogFormat::Apache => generate_apache_log(id, &mut rng),
-            LogFormat::Json => generate_json_log(id, &mut rng),
+            LogFormat::Apache => generate_apache_log(&mut rng),
+            LogFormat::Json => generate_json_log(&mut rng),
         };
-
-        if let Err(e) = file.write_all(log.as_bytes()).await {
-            eprintln!("[Stream {id}] Write error: {e}");
-        }
-        if let Err(e) = file.write_all(b"\n").await {
-            eprintln!("[Stream {id}] Newline write error: {e}");
-        }
+        client.publish(subject.to_string(), log.into()).await?;
+        sleep(delay).await;
     }
 }

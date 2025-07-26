@@ -5,7 +5,15 @@ edition = "2024"
 rust-version = "1.88.0"
 
 [dependencies]
+async-nats = "0.42.0"
 chrono = { version = "0.4.41", default-features = false, features = ["alloc", "std", "clock", "now"] }
 clap = { version = "4.5.41", features = ["derive"] }
+derive-getters = "0.5.0"
 rand = "0.9.1"
 tokio = { version = "1.46.1", features = ["full"] }
+tryhard = "0.5.2"
+
+[dev-dependencies]
+futures-util = "0.3.31"
+testcontainers = "0.24.0"
+testcontainers-modules = { version = "0.12.1", features = ["nats"] }

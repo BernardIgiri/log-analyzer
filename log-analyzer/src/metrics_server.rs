@@ -19,10 +19,10 @@ use crate::{analytics::Analytics, prometheus::PromMetrics};
 #[derive(Clone)]
 struct Metrics(Arc<Analytics>, Arc<PromMetrics>);
 
-pub fn start(analytics: Arc<Analytics>) -> JoinHandle<()> {
-    tokio::spawn(async {
+pub fn start(analytics: Arc<Analytics>, port: u16) -> JoinHandle<()> {
+    tokio::spawn(async move {
         let pro_metrics = Arc::new(PromMetrics::new());
-        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 8080);
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
         let listener = TcpListener::bind(addr).await.unwrap();
         axum::serve(listener, router(Metrics(analytics, pro_metrics)))
             .with_graceful_shutdown(shutdown_signal())

@@ -1,22 +1,21 @@
-use std::path::PathBuf;
-
 use clap::{Parser, ValueEnum};
+use derive_getters::Getters;
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Getters)]
 #[command(name = "log-gen-cli")]
 #[command(about = "Generate fake log streams for testing", long_about = None)]
 pub struct CliArgs {
-    #[arg(short, long, default_value_t = 5)]
-    pub streams: usize,
+    #[arg(long, default_value = "nats://nats:4222")]
+    nats_url: String,
 
-    #[arg(short, long, default_value_t = 10)]
-    pub rate: u64,
+    #[arg(long, default_value = "logs")]
+    subject: String,
 
-    #[arg(short, long, value_enum, default_value_t = LogFormat::Apache)]
-    pub format: LogFormat,
+    #[arg(long, default_value_t = 10)]
+    rate: u64,
 
-    #[arg(long)]
-    pub folder: PathBuf,
+    #[arg(long, value_enum, default_value_t = LogFormat::Apache)]
+    format: LogFormat,
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum)]

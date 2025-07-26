@@ -1,33 +1,22 @@
+use args::CliArgs;
+use clap::Parser;
+use stream::run_log_stream;
+
 mod args;
 mod generator;
 mod stream;
 
-use args::CliArgs;
-use clap::Parser;
-use stream::run_log_stream;
-use tokio::signal;
-use tokio::task;
-
-#[tokio::main(flavor = "multi_thread")]
-async fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = CliArgs::parse();
-    println!(
-        "Starting {} log streams at {} logs/sec per stream",
-        args.streams, args.rate
-    );
 
-    let mut handles = vec![];
-    for stream_id in 0..args.streams {
-        let handle = task::spawn(run_log_stream(
-            args.folder.clone(),
-            stream_id,
-            args.rate,
-            args.format,
-        ));
-        handles.push(handle);
-    }
+    run_log_stream(
+        *args.rate(),
+        *args.format(),
+        args.nats_url().as_str(),
+        args.subject().as_str(),
+    )
+    .await?;
 
-    // Wait for CTRL+C
-    signal::ctrl_c().await.expect("failed to listen for ctrl_c");
-    println!("\nStopping log generation...");
+    Ok(())
 }
