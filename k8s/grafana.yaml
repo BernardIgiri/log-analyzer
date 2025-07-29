@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: log-metrics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:latest
+          ports:
+            - containerPort: 3000
+          volumeMounts:
+            - name: grafana-storage
+              mountPath: /var/lib/grafana
+            - name: grafana-datasource
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: grafana-dashboard-providers
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: grafana-dashboard-files
+              mountPath: /etc/grafana/dashboards
+      volumes:
+        - name: grafana-storage
+          emptyDir: {} # Replace with PVC for production
+        - name: grafana-datasource
+          configMap:
+            name: grafana-datasource
+        - name: grafana-dashboard-providers
+          configMap:
+            name: grafana-dashboard-providers
+        - name: grafana-dashboard-files
+          configMap:
+            name: grafana-dashboards
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: log-metrics
+spec:
+  selector:
+    app: grafana
+  ports:
+    - name: web
+      port: 3000
+      targetPort: 3000

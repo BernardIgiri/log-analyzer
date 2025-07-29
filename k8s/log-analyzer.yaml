@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: log-analyzer
+  namespace: log-metrics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: log-analyzer
+  template:
+    metadata:
+      labels:
+        app: log-analyzer
+    spec:
+      containers:
+        - name: log-analyzer
+          image: localhost/log-analyzer:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--nats-url"
+            - "nats://nats:4222"
+            - "--subject"
+            - "logs"
+            - "--port"
+            - "8080"
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: log-analyzer
+  namespace: log-metrics
+spec:
+  selector:
+    app: log-analyzer
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+

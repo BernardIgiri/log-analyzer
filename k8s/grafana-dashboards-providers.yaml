@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-providers
+  namespace: log-metrics
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'Log Analyzer Dashboards'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        editable: true
+        updateIntervalSeconds: 10
+        options:
+          path: /etc/grafana/dashboards
+

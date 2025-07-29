@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: noise-maker
+  namespace: log-metrics
+spec:
+  replicas: 5  # Simulate multiple servers
+  selector:
+    matchLabels:
+      app: noise-maker
+  template:
+    metadata:
+      labels:
+        app: noise-maker
+    spec:
+      containers:
+        - name: noise-maker
+          image: localhost/noise-maker:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--nats-url"
+            - "nats://nats:4222"
+            - "--subject"
+            - "logs"
+            - "--rate"
+            - "100"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"

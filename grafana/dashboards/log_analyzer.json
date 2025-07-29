@@ -1,15 +1,63 @@
 {
   "title": "Log Analyzer Dashboard",
   "uid": "log-analyzer",
-  "version": 1,
   "schemaVersion": 36,
-  "panels": [],
-  "templating": {
-    "list": []
-  },
+  "version": 2,
+  "refresh": "10s",
   "time": {
-    "from": "now-6h",
+    "from": "now-15m",
     "to": "now"
   },
-  "refresh": "30s"
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Total Logs Ingested",
+      "targets": [
+        {
+          "expr": "logs_ingested_total",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0
+        }
+      },
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 6 }
+    },
+    {
+      "type": "graph",
+      "title": "Logs Ingested Per Second",
+      "targets": [
+        {
+          "expr": "rate(logs_ingested_total[1m])",
+          "legendFormat": "logs/sec"
+        }
+      ],
+      "gridPos": { "x": 8, "y": 0, "w": 16, "h": 6 }
+    },
+    {
+      "type": "graph",
+      "title": "Log Analyzer CPU Usage",
+      "targets": [
+        {
+          "expr": "rate(container_cpu_usage_seconds_total{pod=~\"log-analyzer.*\"}[2m])",
+          "legendFormat": "{{pod}}"
+        }
+      ],
+      "gridPos": { "x": 0, "y": 6, "w": 12, "h": 6 }
+    },
+    {
+      "type": "graph",
+      "title": "Noise Maker CPU Usage",
+      "targets": [
+        {
+          "expr": "rate(container_cpu_usage_seconds_total{pod=~\"noise-maker.*\"}[2m])",
+          "legendFormat": "{{pod}}"
+        }
+      ],
+      "gridPos": { "x": 12, "y": 6, "w": 12, "h": 6 }
+    }
+  ]
 }
