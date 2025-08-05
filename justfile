@@ -35,7 +35,7 @@ restart: stop start
 clean: stop clean-rs
 
 
-## KUBERNETES STUFF
+## KUBERNETES
 
 # Namespace for Kubernetes resources
 namespace := "log-metrics"
