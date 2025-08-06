@@ -7,3 +7,7 @@ members = [
 
 [profile.release]
 panic = "abort"
+
+[profile.pprof]
+inherits = "release"
+debug = true

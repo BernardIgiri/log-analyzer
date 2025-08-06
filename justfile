@@ -1,6 +1,6 @@
 # Run tests
 test:
-    cargo test --no-default-features
+    cargo test --no-default-features -- --include-ignored
 
 # Build Rust binaries for musl target
 build-rs:
@@ -34,6 +34,20 @@ restart: stop start
 # Full clean
 clean: stop clean-rs
 
+# Build log-analyzer with profiling feature
+build-pprof:
+    cargo build --profile pprof --features pprof -p log-analyzer
+
+# Usage: just profile 30
+profile shutdown_after rate batch_size:
+    mkdir -p profile
+    BATCH_SIZE={{batch_size}} RATE={{rate}} podman-compose up -d --force-recreate nats noise-maker
+    cargo run --profile pprof --features pprof -p log-analyzer -- --nats-url nats://127.0.0.1:4222 --shutdown-after {{shutdown_after}}
+    podman-compose down
+
+# View the flamegraph after profiling
+view-flamegraph:
+    xdg-open profile/flamegraph.svg
 
 ## KUBERNETES
 

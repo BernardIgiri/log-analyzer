@@ -17,8 +17,8 @@ use tokio::{
 };
 use worker::{Metric, worker_loop};
 
-const INGEST_BUFFER_SIZE: usize = 50;
-const AGGREGATOR_BUFFER_SIZE: usize = 5;
+#[cfg(feature = "pprof")]
+use pprof::ProfilerGuard;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -31,10 +31,19 @@ struct Args {
 
     #[arg(long, default_value_t = 8080)]
     port: u16,
+
+    #[arg(long, default_value_t = 0)]
+    shutdown_after: u64,
 }
+
+const INGEST_BUFFER_SIZE: usize = 50;
+const AGGREGATOR_BUFFER_SIZE: usize = 5;
 
 #[tokio::main]
 async fn main() -> Result<(), JoinError> {
+    #[cfg(feature = "pprof")]
+    let guard = ProfilerGuard::new(100).unwrap();
+
     let args = Args::parse();
     let analytics = Arc::new(Analytics::default());
     let metrics_handle = metrics_server::start(analytics.clone(), args.port);
@@ -46,6 +55,49 @@ async fn main() -> Result<(), JoinError> {
     let worker_handle = spawn_workers(ingest_rx, aggregator_tx);
     let aggregator_handle = spawn_aggregator(aggregator_rx, &analytics);
 
+    #[cfg(feature = "pprof")]
+    {
+        use pprof::protos::Message;
+        use std::{
+            fs::{self, File},
+            path::Path,
+        };
+
+        if args.shutdown_after > 0 {
+            tokio::select! {
+                _ = async {
+                    let _ = try_join!(nats_handle, worker_handle, aggregator_handle, metrics_handle);
+                } => {
+                    println!("All tasks completed before timeout.");
+                },
+                _ = tokio::time::sleep(std::time::Duration::from_secs(args.shutdown_after)) => {
+                    println!("Profiling duration reached. Generating report...");
+                }
+            }
+        } else {
+            try_join!(
+                nats_handle,
+                worker_handle,
+                aggregator_handle,
+                metrics_handle
+            )?;
+        }
+        let dir = Path::new("profile");
+        fs::create_dir_all(dir).unwrap();
+        if let Ok(report) = guard.report().build() {
+            let svg_path = dir.join("flamegraph.svg");
+            report.flamegraph(File::create(svg_path).unwrap()).unwrap();
+            let pb_path = dir.join("profile.pb");
+            report
+                .pprof()
+                .unwrap()
+                .write_to_writer(&mut File::create(pb_path).unwrap())
+                .unwrap();
+            println!("Profile written to {:?}", dir);
+        }
+    }
+
+    #[cfg(not(feature = "pprof"))]
     try_join!(
         nats_handle,
         worker_handle,

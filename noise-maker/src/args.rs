@@ -14,6 +14,9 @@ pub struct CliArgs {
     #[arg(long, default_value_t = 10)]
     rate: u64,
 
+    #[arg(long, default_value_t = 10000)]
+    batch_size: usize,
+
     #[arg(long, value_enum, default_value_t = LogFormat::Apache)]
     format: LogFormat,
 }

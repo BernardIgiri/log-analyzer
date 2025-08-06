@@ -39,7 +39,8 @@ services:
     command: >
       --nats-url nats://nats:4222
       --subject logs
-      --rate 100
+      --rate ${RATE:-100}
+      --batch-size ${BATCH_SIZE:-100000}
 
   prometheus:
     image: docker.io/prom/prometheus:latest

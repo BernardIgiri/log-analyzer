@@ -12,6 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     run_log_stream(
         *args.rate(),
+        *args.batch_size(),
         *args.format(),
         args.nats_url().as_str(),
         args.subject().as_str(),

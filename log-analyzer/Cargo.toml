@@ -7,6 +7,7 @@ rust-version = "1.88.0"
 [features]
 default = []
 kafka = []
+pprof = ["dep:pprof"]
 
 [dependencies]
 async-nats = "0.42.0"
@@ -18,10 +19,12 @@ futures-util = "0.3.31"
 lru = "0.16.0"
 num-format = "0.4.4"
 parking_lot = "0.12.4"
+pprof = { version = "0.15.0", features = ["flamegraph", "protobuf-codec"], optional = true }
 prometheus = "0.14.0"
 regex = "1.11.1"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
+time = { version = "0.3.41", features = ["formatting", "macros", "parsing"] }
 tokio = { version = "1.46.1", features = ["full"] }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }
 tryhard = "0.5.2"
@@ -32,3 +35,7 @@ portpicker = "0.1.1"
 reqwest = "0.12.22"
 testcontainers = "0.24.0"
 testcontainers-modules = { version = "0.12.1", features = ["nats"] }
+
+[profile.pprof]
+inherits = "release"
+debug = true

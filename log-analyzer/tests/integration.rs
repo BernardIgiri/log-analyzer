@@ -3,6 +3,7 @@ use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::nats;
 use tokio::{process::Command, time::sleep};
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn log_analyzer_starts_and_consumes() {
     // Start NATS container

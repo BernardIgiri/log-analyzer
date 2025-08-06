@@ -1,8 +1,6 @@
-use std::sync::LazyLock;
-
 use crate::models::LogEntry;
 use chrono::{DateTime, Utc};
-use regex::Regex;
+use time::{OffsetDateTime, macros::format_description};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{Duration, sleep};
 
@@ -20,42 +18,34 @@ pub enum Metric {
 }
 
 const FLUSH_INTERVAL: Duration = Duration::from_secs(3);
-static BUFFER_SIZE: usize = 500;
+const BUFFER_SIZE: usize = 1_000_000;
 
-static LOG_RX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r#"^(?P<host>\S+) \S+ \S+ \[(?P<timestamp>[^\]]+)\] "(?P<method>\S+)\s(?P<path>\S+)[^"]*" (?P<status>\d{3}) (?P<bytes>\d+|-)"#
-    ).unwrap()
-});
+// Timestamp format for log entries: [01/Jun/1995:00:00:59 -0600]
+static TS_FORMAT: &[time::format_description::FormatItem<'static>] = format_description!(
+    "[day]/[month repr:short case_sensitive:false]/[year]:[hour]:[minute]:[second] [offset_hour sign:mandatory][offset_minute]"
+);
 
 pub async fn worker_loop(tx: Sender<Vec<Metric>>, mut rx: Receiver<String>) {
     let mut buffer = Vec::with_capacity(BUFFER_SIZE);
     loop {
         tokio::select! {
-            maybe_line = rx.recv() => {
-                match maybe_line {
-                    Some(line) => {
-                        if let Some(LogEntry { status, host, timestamp, path, bytes }) = parse_log_line(&line) {
-                            buffer.push(Metric::Event(status));
-                            buffer.push(Metric::Path(path));
-                            buffer.push(Metric::Host(host.clone()));
-                            buffer.push(Metric::Hit(timestamp));
-                            buffer.push(Metric::HostBytes {
-                                host,
-                                timestamp,
-                                bytes,
-                            });
-                            if buffer.len() >= BUFFER_SIZE {
-                                tx.send(buffer.split_off(0)).await.ok();
+            maybe_chunk = rx.recv() => {
+                match maybe_chunk {
+                    Some(chunk) => {
+                        for line in chunk.split('\n').filter(|l| !l.is_empty()) {
+                            if let Some(LogEntry { status, host, timestamp, path, bytes }) = parse_log_line(line) {
+                                buffer.push(Metric::Event(status));
+                                buffer.push(Metric::Path(path));
+                                buffer.push(Metric::Host(host.clone()));
+                                buffer.push(Metric::Hit(timestamp));
+                                buffer.push(Metric::HostBytes { host, timestamp, bytes });
+                                if buffer.len() >= BUFFER_SIZE {
+                                    tx.send(buffer.split_off(0)).await.ok();
+                                }
                             }
                         }
                     }
-                    None => {
-                        if !buffer.is_empty() {
-                            tx.send(buffer).await.ok();
-                        }
-                        break;
-                    }
+                    None => break,
                 }
             }
             _ = sleep(FLUSH_INTERVAL) => {
@@ -68,23 +58,30 @@ pub async fn worker_loop(tx: Sender<Vec<Metric>>, mut rx: Receiver<String>) {
 }
 
 fn parse_log_line(line: &str) -> Option<LogEntry> {
-    let caps = LOG_RX.captures(line)?;
-
-    let host = caps.name("host")?.as_str().to_string();
-    let timestamp_str = caps.name("timestamp")?.as_str();
-    let path = caps.name("path")?.as_str().to_string();
-    let status = caps.name("status")?.as_str().parse().ok()?;
-    let bytes_str = caps.name("bytes")?.as_str();
+    let mut parts = line.split_whitespace();
+    let host = parts.next()?.to_string();
+    parts.next()?; // skip '-'
+    parts.next()?; // skip '-'
+    // Timestamp spans two tokens
+    let ts_part1 = parts.next()?;
+    let ts_part2 = parts.next()?;
+    let ts_full = format!("{ts_part1} {ts_part2}");
+    let ts = ts_full.strip_prefix('[')?.strip_suffix(']')?;
+    // Skip method (it has a leading quote)
+    let _method = parts.next()?;
+    let mut path = parts.next()?.to_string();
+    if path.ends_with('"') {
+        path.pop();
+    }
+    let status: u16 = parts.next()?.parse().ok()?;
+    let bytes_str = parts.next()?;
     let bytes = if bytes_str == "-" {
         0
     } else {
         bytes_str.parse().ok()?
     };
-
-    let timestamp = DateTime::parse_from_str(timestamp_str, "%d/%b/%Y:%H:%M:%S %z")
-        .ok()
-        .map(|dt| dt.with_timezone(&Utc))?;
-
+    let offset_dt = OffsetDateTime::parse(ts, &TS_FORMAT).ok()?;
+    let timestamp = chrono::DateTime::<Utc>::from_timestamp(offset_dt.unix_timestamp(), 0)?;
     Some(LogEntry {
         host,
         timestamp,

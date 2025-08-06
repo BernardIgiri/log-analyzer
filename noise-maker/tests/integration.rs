@@ -2,6 +2,7 @@ use futures_util::StreamExt;
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::nats;
 
+#[ignore]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn publishes_and_receives_logs() {
     // Start NATS container using testcontainers-modules
