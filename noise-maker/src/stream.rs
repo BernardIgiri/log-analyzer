@@ -3,6 +3,7 @@ use crate::generator::{generate_apache_log, generate_json_log};
 use async_nats::Client;
 use rand::{SeedableRng, rngs::StdRng};
 use tokio::time::{Duration, sleep};
+use tracing::info;
 use tryhard::{RetryFutureConfig, retry_fn};
 
 const MAX_RATE_BEFORE_DISABLING_THROTTLING: u64 = 10_000;
@@ -19,7 +20,7 @@ pub async fn run_log_stream(
         .max_delay(Duration::from_secs(5));
 
     let client: Client = retry_fn(|| async {
-        println!("Attempting to connect to NATS at {nats_url}");
+        info!("Attempting to connect to NATS at {nats_url}");
         async_nats::connect(nats_url).await
     })
     .with_config(config)

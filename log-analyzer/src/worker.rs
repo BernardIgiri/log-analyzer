@@ -3,6 +3,7 @@ use chrono::{DateTime, Utc};
 use time::{OffsetDateTime, macros::format_description};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{Duration, sleep};
+use tracing::debug;
 
 #[derive(Debug)]
 pub enum Metric {
@@ -32,6 +33,7 @@ pub async fn worker_loop(tx: Sender<Vec<Metric>>, mut rx: Receiver<String>) {
             maybe_chunk = rx.recv() => {
                 match maybe_chunk {
                     Some(chunk) => {
+                        debug!("chunk: {chunk}");
                         for line in chunk.split('\n').filter(|l| !l.is_empty()) {
                             if let Some(LogEntry { status, host, timestamp, path, bytes }) = parse_log_line(line) {
                                 buffer.push(Metric::Event(status));

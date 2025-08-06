@@ -1528,6 +1528,7 @@ dependencies = [
  "testcontainers-modules",
  "time",
  "tokio",
+ "tracing",
  "tracing-subscriber",
  "tryhard",
 ]
@@ -1653,6 +1654,8 @@ dependencies = [
  "testcontainers",
  "testcontainers-modules",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
  "tryhard",
 ]
 

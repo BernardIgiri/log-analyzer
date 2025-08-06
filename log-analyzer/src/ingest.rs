@@ -2,6 +2,7 @@ use async_nats::Client;
 use futures_util::StreamExt;
 use std::time::Duration;
 use tokio::sync::mpsc::Sender;
+use tracing::info;
 use tryhard::{RetryFutureConfig, retry_fn};
 
 pub async fn consume_nats(
@@ -13,7 +14,7 @@ pub async fn consume_nats(
         .exponential_backoff(Duration::from_millis(100))
         .max_delay(Duration::from_secs(5));
     let client: Client = retry_fn(|| async {
-        println!("Attempting to connect to NATS at {nats_url}");
+        info!("Attempting to connect to NATS at {nats_url}");
         async_nats::connect(&nats_url).await
     })
     .with_config(config)

@@ -9,12 +9,14 @@ mod worker;
 use analytics::Analytics;
 use clap::Parser;
 use ingest::consume_nats;
-use std::sync::Arc;
+use std::{fs::File, sync::Arc};
 use tokio::{
     sync::mpsc::{self, Receiver, Sender},
     task::{JoinError, JoinHandle},
     try_join,
 };
+use tracing::info;
+use tracing_subscriber::{EnvFilter, fmt::writer::BoxMakeWriter};
 use worker::{Metric, worker_loop};
 
 #[cfg(feature = "pprof")]
@@ -34,6 +36,9 @@ struct Args {
 
     #[arg(long, default_value_t = 0)]
     shutdown_after: u64,
+
+    #[arg(long, default_value = "server.log")]
+    log_file: String,
 }
 
 const INGEST_BUFFER_SIZE: usize = 50;
@@ -45,6 +50,16 @@ async fn main() -> Result<(), JoinError> {
     let guard = ProfilerGuard::new(100).unwrap();
 
     let args = Args::parse();
+    {
+        #[allow(clippy::expect_used)]
+        let file = File::create(&args.log_file).expect("Could not open log file");
+        let writer = BoxMakeWriter::new(file);
+        tracing_subscriber::fmt()
+            .with_writer(writer)
+            .with_env_filter(EnvFilter::from_default_env())
+            .init();
+    }
+    info!("Starting log-analyzer");
     let analytics = Arc::new(Analytics::default());
     let metrics_handle = metrics_server::start(analytics.clone(), args.port);
 
@@ -62,16 +77,17 @@ async fn main() -> Result<(), JoinError> {
             fs::{self, File},
             path::Path,
         };
+        use tracing::info;
 
         if args.shutdown_after > 0 {
             tokio::select! {
                 _ = async {
                     let _ = try_join!(nats_handle, worker_handle, aggregator_handle, metrics_handle);
                 } => {
-                    println!("All tasks completed before timeout.");
+                    info!("All tasks completed before timeout.");
                 },
                 _ = tokio::time::sleep(std::time::Duration::from_secs(args.shutdown_after)) => {
-                    println!("Profiling duration reached. Generating report...");
+                    info!("Profiling duration reached. Generating report...");
                 }
             }
         } else {
@@ -93,7 +109,7 @@ async fn main() -> Result<(), JoinError> {
                 .unwrap()
                 .write_to_writer(&mut File::create(pb_path).unwrap())
                 .unwrap();
-            println!("Profile written to {:?}", dir);
+            info!("Profile written to {dir:?}");
         }
     }
 
@@ -111,7 +127,7 @@ async fn main() -> Result<(), JoinError> {
 fn spawn_nats_ingest(nats_url: String, subject: String, tx: Sender<String>) -> JoinHandle<()> {
     tokio::spawn(async move {
         if let Err(e) = consume_nats(nats_url, subject, tx).await {
-            eprintln!("NATS ingest error: {e}");
+            tracing::error!("NATS ingest error: {e}");
         }
     })
 }

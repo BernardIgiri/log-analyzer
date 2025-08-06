@@ -20,12 +20,17 @@ services:
     depends_on:
       nats:
         condition: service_healthy
+    environment:
+      - RUST_LOG=trace
     command: >
       --nats-url nats://nats:4222
       --subject logs
       --port 8080
+      --log-file /logs/log-analyzer.log
     ports:
       - "8080:8080"
+    volumes:
+      - ./logs:/logs
 
   noise-maker:
     build:
@@ -36,11 +41,16 @@ services:
     depends_on:
       nats:
         condition: service_healthy
+    environment:
+      - RUST_LOG=trace
     command: >
       --nats-url nats://nats:4222
       --subject logs
       --rate ${RATE:-100}
       --batch-size ${BATCH_SIZE:-100000}
+      --log-file /logs/noise-maker.log
+    volumes:
+      - ./logs:/logs
 
   prometheus:
     image: docker.io/prom/prometheus:latest

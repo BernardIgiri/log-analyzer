@@ -19,6 +19,9 @@ pub struct CliArgs {
 
     #[arg(long, value_enum, default_value_t = LogFormat::Apache)]
     format: LogFormat,
+
+    #[arg(long, default_value = "server.log")]
+    log_file: String,
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum)]

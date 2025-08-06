@@ -13,6 +13,12 @@ build-pod:
 # Builds everything
 build: build-rs build-pod
 
+# Build log-analyzer with profiling feature
+build-pod-pprof:
+    cargo build --profile pprof --features pprof -p log-analyzer --target x86_64-unknown-linux-musl
+    cargo build --release -p noise-maker --target x86_64-unknown-linux-musl
+    podman-compose build --no-cache
+
 # Start services using Podman Compose
 start-podman:
     podman-compose up
@@ -34,15 +40,15 @@ restart: stop start
 # Full clean
 clean: stop clean-rs
 
-# Build log-analyzer with profiling feature
-build-pprof:
-    cargo build --profile pprof --features pprof -p log-analyzer
-
-# Usage: just profile 30
+# Usage: just profile 30 100000 1
 profile shutdown_after rate batch_size:
-    mkdir -p profile
+    mkdir -p profile logs
+    just build-pod-pprof
     BATCH_SIZE={{batch_size}} RATE={{rate}} podman-compose up -d --force-recreate nats noise-maker
-    cargo run --profile pprof --features pprof -p log-analyzer -- --nats-url nats://127.0.0.1:4222 --shutdown-after {{shutdown_after}}
+    RUST_LOG=trace cargo run --profile pprof --features pprof -p log-analyzer -- \
+      --nats-url nats://127.0.0.1:4222 \
+      --shutdown-after {{shutdown_after}} \
+      --log-file logs/log-analyzer-profile.log
     podman-compose down
 
 # View the flamegraph after profiling
@@ -58,14 +64,14 @@ namespace := "log-metrics"
 k8s-build-load:
     podman build -t localhost/log-analyzer:latest -f Dockerfile.log-analyzer .
     podman tag localhost/log-analyzer:latest log-analyzer:latest
-    rm -f log-analyzer.tar
     podman save --format docker-archive -o log-analyzer.tar log-analyzer:latest
     minikube image load log-analyzer.tar
     podman build -t localhost/noise-maker:latest -f Dockerfile.noise-maker .
     podman tag localhost/noise-maker:latest noise-maker:latest
-    rm -f noise-maker.tar
     podman save --format docker-archive -o noise-maker.tar noise-maker:latest
     minikube image load noise-maker.tar
+    rm -f noise-maker.tar
+    rm -f log-analyzer.tar
 
 # Apply all Kubernetes manifests
 k8s-apply:
