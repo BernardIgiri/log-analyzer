@@ -20,8 +20,8 @@ services:
     depends_on:
       nats:
         condition: service_healthy
-    environment:
-      - RUST_LOG=trace
+    # environment:
+    #   - RUST_LOG=trace
     command: >
       --nats-url nats://nats:4222
       --subject logs
@@ -41,8 +41,8 @@ services:
     depends_on:
       nats:
         condition: service_healthy
-    environment:
-      - RUST_LOG=trace
+    # environment:
+    #   - RUST_LOG=trace
     command: >
       --nats-url nats://nats:4222
       --subject logs

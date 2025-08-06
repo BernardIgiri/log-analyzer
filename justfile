@@ -10,14 +10,8 @@ build-rs:
 build-pod:
     podman-compose build --no-cache
 
-# Builds everything
+# Full build: Rust + podman
 build: build-rs build-pod
-
-# Build log-analyzer with profiling feature
-build-pod-pprof:
-    cargo build --profile pprof --features pprof -p log-analyzer --target x86_64-unknown-linux-musl
-    cargo build --release -p noise-maker --target x86_64-unknown-linux-musl
-    podman-compose build --no-cache
 
 # Start services using Podman Compose
 start-podman:
@@ -34,18 +28,22 @@ clean-rs:
 # Start everything (tests + build + podman-compose up)
 start: test build start-podman
 
-# Restart services
+# Restart all services
 restart: stop start
 
 # Full clean
 clean: stop clean-rs
 
-# Usage: just profile 30 100000 1
+# Build log-analyzer with profiling
+build-pprof:
+    cargo build --profile pprof --features pprof -p log-analyzer
+
+# Run profiling: Usage: just profile 30 100000 1
 profile shutdown_after rate batch_size:
     mkdir -p profile logs
-    just build-pod-pprof
+    just build
     BATCH_SIZE={{batch_size}} RATE={{rate}} podman-compose up -d --force-recreate nats noise-maker
-    RUST_LOG=trace cargo run --profile pprof --features pprof -p log-analyzer -- \
+    cargo run --profile pprof --features pprof -p log-analyzer -- \
       --nats-url nats://127.0.0.1:4222 \
       --shutdown-after {{shutdown_after}} \
       --log-file logs/log-analyzer-profile.log
@@ -55,12 +53,13 @@ profile shutdown_after rate batch_size:
 view-flamegraph:
     xdg-open profile/flamegraph.svg
 
+# View Prometheus & Grafana in Kubernetes
+
 ## KUBERNETES
 
-# Namespace for Kubernetes resources
 namespace := "log-metrics"
 
-# Build images using Podman
+# Build images for Minikube and load
 k8s-build-load:
     podman build -t localhost/log-analyzer:latest -f Dockerfile.log-analyzer .
     podman tag localhost/log-analyzer:latest log-analyzer:latest
@@ -70,10 +69,9 @@ k8s-build-load:
     podman tag localhost/noise-maker:latest noise-maker:latest
     podman save --format docker-archive -o noise-maker.tar noise-maker:latest
     minikube image load noise-maker.tar
-    rm -f noise-maker.tar
-    rm -f log-analyzer.tar
+    rm -f noise-maker.tar log-analyzer.tar
 
-# Apply all Kubernetes manifests
+# Apply manifests
 k8s-apply:
     kubectl apply -f k8s/namespace.yaml
     kubectl apply -f k8s/nats.yaml
@@ -82,7 +80,7 @@ k8s-apply:
     kubectl apply -f k8s/prometheus.yaml
     kubectl apply -f k8s/grafana.yaml
 
-# Delete all resources
+# Tear down
 k8s-delete:
     kubectl delete -f k8s/grafana.yaml --ignore-not-found
     kubectl delete -f k8s/prometheus.yaml --ignore-not-found
@@ -91,29 +89,29 @@ k8s-delete:
     kubectl delete -f k8s/nats.yaml --ignore-not-found
     kubectl delete -f k8s/namespace.yaml --ignore-not-found
 
-# Full deploy: build, load, and apply
+# End-to-end deploy
 k8s-deploy: k8s-build-load k8s-apply
 
-# View all pods in the namespace
+# Monitor
 k8s-status:
     kubectl get pods -n {{namespace}}
 
-# Port-forward Grafana (localhost:3000)
+# Port-forward Grafana
 k8s-grafana:
     kubectl port-forward svc/grafana 3000:3000 -n {{namespace}}
 
-# Port-forward Prometheus (localhost:9090)
+# Port-forward Prometheus
 k8s-prometheus:
     kubectl port-forward svc/prometheus 9090:9090 -n {{namespace}}
 
-# Start Minikube with enough resources for your stack
+# Start Kubernetes locally
 k8s-start:
     minikube start --cpus=4 --memory=4096 --addons=metrics-server
 
-# Stop Minikube
+# Stop Kubernetes
 k8s-stop:
     minikube stop
 
-# Delete Minikube cluster
+# Reset Minikube
 k8s-reset:
     minikube delete
