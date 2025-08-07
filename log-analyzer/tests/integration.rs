@@ -46,6 +46,7 @@ async fn log_analyzer_starts_and_consumes() {
         }
         sleep(Duration::from_millis(200)).await;
     }
+    sleep(Duration::from_millis(500)).await;
 
     // Publish a log to NATS
     let nats_client = async_nats::connect(&nats_url)

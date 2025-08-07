@@ -1,45 +1,67 @@
-# Run tests
+# Use bash with strict mode-ish
+set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
+
+# --------
+# Config
+# --------
+namespace := "log-metrics"
+arch      := "x86_64-unknown-linux-musl"
+
+# --------
+# Core tasks (unified around Kubernetes)
+# --------
+
+# Run tests (unchanged)
 test:
-    cargo test --no-default-features -- --include-ignored
+    cargo test --no-default-features # -- --include-ignored
 
-# Build Rust binaries for musl target
+# Build Rust binaries for MUSL
 build-rs:
-    cargo build --release --target x86_64-unknown-linux-musl
+    cargo build --release --target {{arch}}
 
-# Build podman containers
-build-pod:
-    podman-compose build --no-cache
+# Build images and load them into Minikube (was build-pod)
+# Requires: podman, minikube
+# Build images and load them into Minikube
+build: build-rs
+    # log-analyzer
+    podman build -t localhost/log-analyzer:latest -f Dockerfile.log-analyzer .
+    podman save --format oci-archive -o log-analyzer.tar localhost/log-analyzer:latest
+    minikube image load log-analyzer.tar --overwrite=true
+    # noise-maker
+    podman build -t localhost/noise-maker:latest -f Dockerfile.noise-maker .
+    podman save --format oci-archive -o noise-maker.tar localhost/noise-maker:latest
+    minikube image load noise-maker.tar --overwrite=true
+    # clean up
+    rm -f log-analyzer.tar noise-maker.tar
 
-# Full build: Rust + podman
-build: build-rs build-pod
+# Start the local k8s stack end-to-end (tests + build + deploy)
+start: test build k8s-start k8s-apply k8s-wait
 
-# Start services using Podman Compose
-start-podman:
-    podman-compose up
+# Stop the k8s stack (delete manifests, keep cluster running)
+stop: k8s-delete
 
-# Stop services
-stop:
-    podman-compose down
+# Restart deployments in-place (no image rebuild)
+restart:
+    kubectl rollout restart deploy -n {{namespace}} --all
+    just k8s-wait
 
-# Clean Rust build artifacts
-clean-rs:
+# Clean local artifacts + tear down k8s resources
+clean:
+    just stop
     cargo clean
-
-# Start everything (tests + build + podman-compose up)
-start: test build start-podman
-
-# Restart all services
-restart: stop start
-
-# Full clean
-clean: stop clean-rs
 
 # Build log-analyzer with profiling
 build-pprof:
     cargo build --profile pprof --features pprof -p log-analyzer
     podman-compose build --no-cache
 
+# --------
 # Run profiling: Usage: just profile 30 100000 1
+# - shutdown_after = seconds to run profiler before shutdown
+# - rate = number of log lines per/second, after 10,000 throttling
+#          is disabled so that it operates as fast as a possible.
+# - batch_size = number of log lines per NATS message
+# --------
 profile shutdown_after rate batch_size:
     mkdir -p profile logs
     just build-pprof
@@ -50,69 +72,56 @@ profile shutdown_after rate batch_size:
       --log-file logs/log-analyzer-profile.log
     podman-compose down
 
-# View the flamegraph after profiling
-view-flamegraph:
-    xdg-open profile/flamegraph.svg
+# --------
+# Kubernetes helpers (kept & improved)
+# --------
 
-# View Prometheus & Grafana in Kubernetes
-
-## KUBERNETES
-
-namespace := "log-metrics"
-
-# Build images for Minikube and load
-k8s-build-load:
-    podman build -t localhost/log-analyzer:latest -f Dockerfile.log-analyzer .
-    podman tag localhost/log-analyzer:latest log-analyzer:latest
-    podman save --format docker-archive -o log-analyzer.tar log-analyzer:latest
-    minikube image load log-analyzer.tar
-    podman build -t localhost/noise-maker:latest -f Dockerfile.noise-maker .
-    podman tag localhost/noise-maker:latest noise-maker:latest
-    podman save --format docker-archive -o noise-maker.tar noise-maker:latest
-    minikube image load noise-maker.tar
-    rm -f noise-maker.tar log-analyzer.tar
-
-# Apply manifests
-k8s-apply:
-    kubectl apply -f k8s/namespace.yaml
-    kubectl apply -f k8s/nats.yaml
-    kubectl apply -f k8s/log-analyzer.yaml
-    kubectl apply -f k8s/noise-maker.yaml
-    kubectl apply -f k8s/prometheus.yaml
-    kubectl apply -f k8s/grafana.yaml
-
-# Tear down
-k8s-delete:
-    kubectl delete -f k8s/grafana.yaml --ignore-not-found
-    kubectl delete -f k8s/prometheus.yaml --ignore-not-found
-    kubectl delete -f k8s/noise-maker.yaml --ignore-not-found
-    kubectl delete -f k8s/log-analyzer.yaml --ignore-not-found
-    kubectl delete -f k8s/nats.yaml --ignore-not-found
-    kubectl delete -f k8s/namespace.yaml --ignore-not-found
-
-# End-to-end deploy
-k8s-deploy: k8s-build-load k8s-apply
-
-# Monitor
-k8s-status:
-    kubectl get pods -n {{namespace}}
-
-# Port-forward Grafana
-k8s-grafana:
-    kubectl port-forward svc/grafana 3000:3000 -n {{namespace}}
-
-# Port-forward Prometheus
-k8s-prometheus:
-    kubectl port-forward svc/prometheus 9090:9090 -n {{namespace}}
-
-# Start Kubernetes locally
+# Start local cluster (Minikube)
 k8s-start:
     minikube start --cpus=4 --memory=4096 --addons=metrics-server
 
-# Stop Kubernetes
+# Apply manifests (namespace first)
+k8s-apply:
+    kubectl apply -f k8s/namespace.yaml
+    kubectl apply -f k8s/nats.yaml -n {{namespace}}
+    kubectl apply -f k8s/log-analyzer.yaml -n {{namespace}}
+    kubectl apply -f k8s/noise-maker.yaml -n {{namespace}}
+    kubectl apply -f k8s/prometheus.yaml -n {{namespace}}
+    kubectl apply -f k8s/grafana.yaml -n {{namespace}}
+
+# Wait for all Deployments in the namespace to become ready
+k8s-wait:
+    # Wait for any Deployments that exist (no-op if none)
+    if kubectl get deploy -n {{namespace}} >/dev/null 2>&1; then \
+      for d in $$(kubectl get deploy -n {{namespace}} -o name); do \
+        kubectl rollout status "$$d" -n {{namespace}} --timeout=120s; \
+      done; \
+    fi
+
+# Delete manifests (safe with ignore-not-found flags)
+k8s-delete:
+    kubectl delete -f k8s/grafana.yaml     -n {{namespace}} --ignore-not-found
+    kubectl delete -f k8s/prometheus.yaml  -n {{namespace}} --ignore-not-found
+    kubectl delete -f k8s/noise-maker.yaml -n {{namespace}} --ignore-not-found
+    kubectl delete -f k8s/log-analyzer.yaml -n {{namespace}} --ignore-not-found
+    kubectl delete -f k8s/nats.yaml        -n {{namespace}} --ignore-not-found
+    kubectl delete -f k8s/namespace.yaml   --ignore-not-found
+
+# Quick status
+k8s-status:
+    kubectl get pods,svc,deploy -n {{namespace}}
+
+# Port-forwards
+k8s-grafana:
+    kubectl port-forward svc/grafana 3000:3000 -n {{namespace}}
+
+k8s-prometheus:
+    kubectl port-forward svc/prometheus 9090:9090 -n {{namespace}}
+
+# Stop & reset Minikube (optional)
 k8s-stop:
     minikube stop
 
-# Reset Minikube
 k8s-reset:
     minikube delete
+
