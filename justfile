@@ -7,10 +7,6 @@ set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 namespace := "log-metrics"
 arch      := "x86_64-unknown-linux-musl"
 
-# --------
-# Core tasks (unified around Kubernetes)
-# --------
-
 # Run tests (unchanged)
 test:
     cargo test --no-default-features # -- --include-ignored
@@ -21,7 +17,6 @@ build-rs:
 
 # Build images and load them into Minikube (was build-pod)
 # Requires: podman, minikube
-# Build images and load them into Minikube
 build: build-rs
     # log-analyzer
     podman build -t localhost/log-analyzer:latest -f Dockerfile.log-analyzer .
@@ -42,7 +37,7 @@ stop: k8s-delete
 
 # Restart deployments in-place (no image rebuild)
 restart:
-    kubectl rollout restart deploy -n {{namespace}} --all
+    kubectl rollout restart deployment -n {{namespace}} --all
     just k8s-wait
 
 # Clean local artifacts + tear down k8s resources
@@ -55,30 +50,43 @@ build-pprof:
     cargo build --profile pprof --features pprof -p log-analyzer
     podman-compose build --no-cache
 
-# --------
 # Run profiling: Usage: just profile 30 100000 1
 # - shutdown_after = seconds to run profiler before shutdown
-# - rate = number of log lines per/second, after 10,000 throttling
-#          is disabled so that it operates as fast as a possible.
+# - rate = number of log lines per second; after 10,000 throttling is disabled
 # - batch_size = number of log lines per NATS message
-# --------
 profile shutdown_after rate batch_size:
     mkdir -p profile logs
     just build-pprof
+    trap 'podman-compose down' EXIT
     BATCH_SIZE={{batch_size}} RATE={{rate}} podman-compose up -d --force-recreate nats noise-maker
     cargo run --profile pprof --features pprof -p log-analyzer -- \
       --nats-url nats://127.0.0.1:4222 \
       --shutdown-after {{shutdown_after}} \
       --log-file logs/log-analyzer-profile.log
-    podman-compose down
-
-# --------
-# Kubernetes helpers (kept & improved)
-# --------
 
 # Start local cluster (Minikube)
+# - Only set CPU/mem on first creation to avoid errors on existing clusters.
 k8s-start:
-    minikube start --cpus=4 --memory=4096 --addons=metrics-server
+    if minikube status >/dev/null 2>&1; then \
+      echo "Minikube exists; starting without resource flags..."; \
+      minikube start; \
+    else \
+      minikube start --cpus=4 --memory=4096 --addons=metrics-server; \
+    fi
+
+# Ensure namespace exists and is Active (auto-fixes Terminating if jq is available)
+k8s-ensure-namespace:
+    if ! kubectl get ns {{namespace}} >/dev/null 2>&1; then \
+      kubectl apply -f k8s/namespace.yaml; \
+    fi; \
+    echo "Waiting for namespace {{namespace}} to be Active..."; \
+    for i in $$(seq 1 60); do \
+      phase=$$(kubectl get ns {{namespace}} -o jsonpath='{.status.phase}' 2>/dev/null || echo "NotFound"); \
+      if [ "$$phase" = "Active" ]; then echo "Namespace Active"; break; fi; \
+      if [ "$$phase" = "Terminating" ] && command -v jq >/dev/null 2>&1 && [ "$$i" -eq 30 ]; then \
+        echo "Namespace stuck in Terminating; attempting to clear finalizers..."; \
+        kubectl get ns {{namespace}} -o json \
+          | jq 'del(.spec
 
 # Apply manifests (namespace first)
 k8s-apply:
@@ -124,4 +132,3 @@ k8s-stop:
 
 k8s-reset:
     minikube delete
-
