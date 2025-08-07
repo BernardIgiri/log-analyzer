@@ -1,6 +1,5 @@
 use crate::models::LogEntry;
-use chrono::{DateTime, Utc};
-use time::{OffsetDateTime, macros::format_description};
+use chrono::{DateTime, TimeDelta, TimeZone, Utc};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{Duration, sleep};
 use tracing::debug;
@@ -20,11 +19,6 @@ pub enum Metric {
 
 const FLUSH_INTERVAL: Duration = Duration::from_secs(3);
 const BUFFER_SIZE: usize = 1_000_000;
-
-// Timestamp format for log entries: [01/Jun/1995:00:00:59 -0600]
-static TS_FORMAT: &[time::format_description::FormatItem<'static>] = format_description!(
-    "[day]/[month repr:short case_sensitive:false]/[year]:[hour]:[minute]:[second] [offset_hour sign:mandatory][offset_minute]"
-);
 
 pub async fn worker_loop(tx: Sender<Vec<Metric>>, mut rx: Receiver<String>) {
     let mut buffer = Vec::with_capacity(BUFFER_SIZE);
@@ -60,37 +54,63 @@ pub async fn worker_loop(tx: Sender<Vec<Metric>>, mut rx: Receiver<String>) {
 }
 
 fn parse_log_line(line: &str) -> Option<LogEntry> {
-    let mut parts = line.split_whitespace();
-    let host = parts.next()?.to_string();
+    let mut parts = line.split_ascii_whitespace();
+    let host = parts.next()?;
     parts.next()?; // skip '-'
     parts.next()?; // skip '-'
-    // Timestamp spans two tokens
-    let ts_part1 = parts.next()?;
-    let ts_part2 = parts.next()?;
-    let ts_full = format!("{ts_part1} {ts_part2}");
-    let ts = ts_full.strip_prefix('[')?.strip_suffix(']')?;
-    // Skip method (it has a leading quote)
-    let _method = parts.next()?;
-    let mut path = parts.next()?.to_string();
-    if path.ends_with('"') {
-        path.pop();
+    let ts1 = parts.next()?.strip_prefix('[')?;
+    let ts2 = parts.next()?.strip_suffix(']')?;
+    let ts_start = ts1.as_ptr() as usize - line.as_ptr() as usize;
+    let ts_end = ts2.as_ptr() as usize - line.as_ptr() as usize + ts2.len();
+    let ts_combined = &line[ts_start..ts_end];
+    parts.next()?; // skip method
+    let mut path = parts.next()?;
+    if let Some(stripped) = path.strip_suffix('"') {
+        path = stripped;
     }
     let status: u16 = parts.next()?.parse().ok()?;
-    let bytes_str = parts.next()?;
-    let bytes = if bytes_str == "-" {
-        0
-    } else {
-        bytes_str.parse().ok()?
+    let bytes = match parts.next()? {
+        "-" => 0,
+        s => s.parse().ok()?,
     };
-    let offset_dt = OffsetDateTime::parse(ts, &TS_FORMAT).ok()?;
-    let timestamp = chrono::DateTime::<Utc>::from_timestamp(offset_dt.unix_timestamp(), 0)?;
+    let dt = parse_apache_timestamp(ts_combined)?;
     Some(LogEntry {
-        host,
-        timestamp,
-        path,
+        host: host.to_owned(),
+        timestamp: dt,
+        path: path.to_owned(),
         status,
         bytes,
     })
+}
+
+fn parse_apache_timestamp(ts: &str) -> Option<DateTime<Utc>> {
+    let mut parts = ts.splitn(7, ['/', ':', ' ']);
+    let day: u32 = parts.next()?.parse().ok()?;
+    let month = match parts.next()? {
+        "Jan" => 1,
+        "Feb" => 2,
+        "Mar" => 3,
+        "Apr" => 4,
+        "May" => 5,
+        "Jun" => 6,
+        "Jul" => 7,
+        "Aug" => 8,
+        "Sep" => 9,
+        "Oct" => 10,
+        "Nov" => 11,
+        "Dec" => 12,
+        _ => return None,
+    };
+    let year: i32 = parts.next()?.parse().ok()?;
+    let hour: u32 = parts.next()?.parse().ok()?;
+    let min: u32 = parts.next()?.parse().ok()?;
+    let sec: u32 = parts.next()?.parse().ok()?;
+    let offset: i32 = parts.next().map(|s| s.parse::<i32>().ok())??;
+    let offset_hours = offset / 100;
+    let offset_min = offset - (offset_hours * 100);
+    Utc.with_ymd_and_hms(year, month, day, hour, min, sec)
+        .single()
+        .map(|t| t - TimeDelta::hours(offset_hours.into()) - TimeDelta::minutes(offset_min.into()))
 }
 
 #[cfg(test)]
