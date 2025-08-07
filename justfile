@@ -37,11 +37,12 @@ clean: stop clean-rs
 # Build log-analyzer with profiling
 build-pprof:
     cargo build --profile pprof --features pprof -p log-analyzer
+    podman-compose build --no-cache
 
 # Run profiling: Usage: just profile 30 100000 1
 profile shutdown_after rate batch_size:
     mkdir -p profile logs
-    just build
+    just build-pprof
     BATCH_SIZE={{batch_size}} RATE={{rate}} podman-compose up -d --force-recreate nats noise-maker
     cargo run --profile pprof --features pprof -p log-analyzer -- \
       --nats-url nats://127.0.0.1:4222 \
