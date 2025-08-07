@@ -99,12 +99,7 @@ k8s-apply:
 
 # Wait for all Deployments in the namespace to become ready
 k8s-wait:
-    # Wait for any Deployments that exist (no-op if none)
-    if kubectl get deploy -n {{namespace}} >/dev/null 2>&1; then \
-      for d in $$(kubectl get deploy -n {{namespace}} -o name); do \
-        kubectl rollout status "$$d" -n {{namespace}} --timeout=120s; \
-      done; \
-    fi
+    bash -eu -o pipefail -c 'if kubectl get deploy -n {{namespace}} >/dev/null 2>&1; then for d in $(kubectl get deploy -n {{namespace}} -o name); do kubectl rollout status "$d" -n {{namespace}} --timeout=120s; done; fi'
 
 # Delete manifests (safe with ignore-not-found flags)
 k8s-delete:
@@ -119,10 +114,11 @@ k8s-delete:
 k8s-status:
     kubectl get pods,svc,deploy -n {{namespace}}
 
-# Port-forwards
+# Port-forward grafana
 k8s-grafana:
     kubectl port-forward svc/grafana 3000:3000 -n {{namespace}}
 
+# Port-forward prometheus
 k8s-prometheus:
     kubectl port-forward svc/prometheus 9090:9090 -n {{namespace}}
 
